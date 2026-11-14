@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>パチンコ基盤 (ST機)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <h1>パチンコ基盤 <small>ST機・ブラウザー完結</small></h1>
+  <nav><a id="verifyLink" href="verify.html" hidden>検証画面</a></nav>
+</header>
+<main class="layout">
+  <section class="boardWrap">
+    <canvas id="board" aria-label="パチンコ盤面"></canvas>
+    <div class="banner" id="banner" role="status"></div>
+  </section>
+
+  <section class="side">
+    <div class="hud" id="hud">
+      <div class="stat big"><span>持ち玉</span><b id="owned">0</b></div>
+      <div class="stat"><span>発射</span><b id="launched">0</b></div>
+      <div class="stat"><span>総獲得賞球</span><b id="payout">0</b></div>
+      <div class="stat"><span>状態</span><b id="mode">通常</b></div>
+      <div class="stat"><span>ST/時短残</span><b id="remain">-</b></div>
+      <div class="stat"><span>ラウンド</span><b id="round">-</b></div>
+      <div class="stat wide"><span>特図1保留</span><b class="pips" id="hold1"></b><span class="sub" id="spin1"></span></div>
+      <div class="stat wide"><span>特図2保留</span><b class="pips" id="hold2"></b><span class="sub" id="spin2"></span></div>
+      <div class="stat wide"><span>入賞数</span><b id="entries" class="small">-</b></div>
+      <div class="stat wide"><span>推奨打ち</span><b id="side">左打ち</b></div>
+    </div>
+
+    <div class="controls">
+      <div class="handle">
+        <label for="strength">ハンドル（発射強度） <output id="strengthOut">0.15</output></label>
+        <input type="range" id="strength" min="0" max="1" step="0.01" value="0.15">
+        <div class="ticks"><span>弱(戻り)</span><span>左打ち域</span><span>右打ち域</span></div>
+      </div>
+      <div class="btns">
+        <button id="leftBtn" type="button">左打ち</button>
+        <button id="rightBtn" type="button">右打ち</button>
+        <button id="fireBtn" type="button" class="fire">押している間 発射</button>
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" id="auto"> 推奨打ちを自動</label>
+        <label>速度 <select id="speed"><option value="1">x1</option><option value="4">x4</option><option value="16">x16</option></select></label>
+      </div>
+    </div>
+
+    <details class="panel"><summary>台設定（確率・振分・賞球を変更）</summary>
+      <div class="settingsForm">
+        <label>プロファイル <select id="profile"></select></label>
+        <div class="grid2">
+          <label>分母 <input type="number" id="f_den" min="1" step="1"></label>
+          <label>特図1 低確率 分子 <input type="number" id="f_low1" min="0" step="1"></label>
+          <label>特図2 低確率 分子 <input type="number" id="f_low2" min="0" step="1"></label>
+          <label>特図1 高確率 分子 <input type="number" id="f_high1" min="0" step="1"></label>
+          <label>特図2 高確率 分子 <input type="number" id="f_high2" min="0" step="1"></label>
+          <label>アタッカー賞球/個 <input type="number" id="f_att" min="0" step="1"></label>
+          <label>持ち玉 初期 <input type="number" id="f_balls" min="0" step="1"></label>
+          <label>乱数シード（空=本番乱数） <input type="text" id="f_seed" placeholder="例: 12345"></label>
+        </div>
+        <textarea id="json" spellcheck="false" rows="10" aria-label="機種設定JSON"></textarea>
+        <div class="btns"><button id="applyBtn" type="button">この設定で最初から</button><button id="resetBtn" type="button">プロファイルに戻す</button></div>
+        <ul id="issues" class="issues"></ul>
+      </div>
+    </details>
+
+    <details class="panel"><summary>ログ</summary><ol id="log" class="log"></ol></details>
+    <p class="note" id="theory"></p>
+  </section>
+</main>
+<script type="module" src="src/ui/main.js"></script>
+</body>
+</html>

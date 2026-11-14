@@ -1,0 +1,14 @@
+{
+  "name": "pachinko",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ブラウザー完結のパチンコ基盤（ST機）。依存パッケージなし。",
+  "scripts": {
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "verify": "node scripts/verify.mjs",
+    "build": "node scripts/build.mjs",
+    "build:release": "node scripts/build.mjs --no-verify"
+  }
+}
