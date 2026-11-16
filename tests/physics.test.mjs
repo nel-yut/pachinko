@@ -13,7 +13,7 @@ test('同一シード・同一強度で物理は決定的', () => {
 });
 
 test('左打ちと右打ちで異なる経路: 右打ちはゲートを通過し、左打ちは通過しにくい', () => {
-  const r = runPhysicsReport({ seed: 2, ballsPerStrength: 150, strengths: [0.1, 0.7] });
+  const r = runPhysicsReport({ seed: 2, ballsPerStrength: 150, strengths: [0.22, 0.75] });
   const [left, right] = r.rows;
   assert.ok(right.gate > left.gate * 2, `gate left=${left.gate} right=${right.gate}`);
   assert.ok(left.start1 > right.start1, `start1 left=${left.start1} right=${right.start1}`);
@@ -30,7 +30,7 @@ test('セッション: 発射→物理入賞→持ち玉・賞球が連動し、
   const cfg = structuredClone(sampleSt);
   const s = new GameSession(cfg, { machineRng: deriveSeededRng(4, 'm'), physicsRng: deriveSeededRng(4, 'p') });
   let lot = 0, launched = 0; s.machine.on('lottery', () => lot++); s.machine.on('launched', () => launched++);
-  for (let i = 0; i < 20 * 60 * 30; i++) { s.tryFire(0.15); s.update(1000 / 60); }
+  for (let i = 0; i < 20 * 60 * 30; i++) { s.tryFire(0.22); s.update(1000 / 60); }
   assert.ok(launched > 100);
   // 抽選は入賞時のみ: 抽選回数 = 有効始動口入賞数(保留満杯分は除く)
   assert.ok(lot <= s.machine.balls.launched);

@@ -10,6 +10,7 @@ export class PhysicsWorld {
     this.balls = [];
     this.shutters = { attackerOpen: false, denchuOpen: false, vOpen: false };
     this.time = 0;
+    this.wm = layout.windmills.map((m) => ({ ...m, angle: 0, omega: 0 }));
     this._buildGrid();
   }
   _buildGrid() {
@@ -31,7 +32,10 @@ export class PhysicsWorld {
   launch(id, strength) {
     const L = this.P.launch, { laneX, gap, laneBottom } = this.P.rail;
     const j = 1 + (this.rng.nextInt(20001) - 10000) / 10000 * L.jitter;
-    const v = (L.vMin + (L.vMax - L.vMin) * Math.min(1, Math.max(0, strength))) * j;
+    const st = Math.min(1, Math.max(0, strength)), c = L.curve;
+    // 強度→初速。左打ち域(弱め)を広く取るため区分線形
+    const base = c ? (st <= c[1][0] ? c[0][1] + ((c[1][1] - c[0][1]) * st) / c[1][0] : c[1][1] + ((c[2][1] - c[1][1]) * (st - c[1][0])) / (1 - c[1][0])) : L.vMin + (L.vMax - L.vMin) * st;
+    const v = base * j;
     const b = { id, x: laneX + gap / 2, y: laneBottom - 12, vx: 0, vy: -v, age: 0, still: 0, gates: new Set(), strength };
     this.balls.push(b);
     return b;
@@ -43,6 +47,7 @@ export class PhysicsWorld {
     const sub = Math.max(1, Math.ceil(dt / (1 / 600))), h = dt / sub;
     for (let s = 0; s < sub; s++) {
       this.time += h;
+      for (const m of this.wm) { m.angle += m.omega * h; m.omega *= 1 - 0.9 * h; }
       for (let i = this.balls.length - 1; i >= 0; i--) {
         const b = this.balls[i];
         b.vy += g * h; b.x += b.vx * h; b.y += b.vy * h; b.age += h;
@@ -69,6 +74,7 @@ export class PhysicsWorld {
     };
     const seg = (a, bb) => {
       const abx = bb[0] - a[0], aby = bb[1] - a[1];
+      if (abx * abx + aby * aby < 1e-6) return;
       let t = ((b.x - a[0]) * abx + (b.y - a[1]) * aby) / (abx * abx + aby * aby);
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const px = a[0] + abx * t, py = a[1] + aby * t, dx = b.x - px, dy = b.y - py, d2 = dx * dx + dy * dy;
@@ -83,10 +89,34 @@ export class PhysicsWorld {
       const dx = b.x - p.x, dy = b.y - p.y, rr = R + p.r, d2 = dx * dx + dy * dy;
       if (d2 < rr * rr) { const d = Math.sqrt(d2) || 1e-6; resolve(dx / d, dy / d, rr - d); }
     }
-    for (const cv of this.layout.covers) if (!this.shutters[cv.closedWhen]) seg(cv.a, cv.b);
+    for (const d of this.layout.dynamics) for (const sg of this.shutters[d.key] ? d.open : d.closed) seg(sg.a, sg.b);
+    for (const m of this.wm) this._windmill(b, m);
     // 外レール外へ出た玉を押し戻す安全策（トンネリング対策）
     if (b.x < R) { b.x = R; if (b.vx < 0) b.vx = -b.vx * e; }
     if (b.x > this.layout.width - R) { b.x = this.layout.width - R; if (b.vx > 0) b.vx = -b.vx * e; }
+  }
+
+  /** 風車: 回転する羽根(線分)との衝突。羽根の速度を考慮し、玉から受けた力積で角速度が変わる。 */
+  _windmill(b, m) {
+    const R = this.P.ballRadius, e = this.P.restitution;
+    if (Math.hypot(b.x - m.x, b.y - m.y) > m.r + R + 2) return;
+    for (let k = 0; k < m.blades; k++) {
+      const ang = m.angle + (k * 2 * Math.PI) / m.blades, tx = m.x + Math.cos(ang) * m.r, ty = m.y + Math.sin(ang) * m.r;
+      const abx = tx - m.x, aby = ty - m.y;
+      let t = ((b.x - m.x) * abx + (b.y - m.y) * aby) / (abx * abx + aby * aby); t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = m.x + abx * t, py = m.y + aby * t, dx = b.x - px, dy = b.y - py, d2 = dx * dx + dy * dy;
+      if (d2 >= R * R) continue;
+      const d = Math.sqrt(d2) || 1e-6, nx = dx / d, ny = dy / d;
+      b.x += nx * (R - d); b.y += ny * (R - d);
+      const rx = px - m.x, ry = py - m.y, wvx = -m.omega * ry, wvy = m.omega * rx;
+      const rvn = (b.vx - wvx) * nx + (b.vy - wvy) * ny;
+      if (rvn < 0) {
+        const J = -(1 + e) * rvn;
+        b.vx += J * nx; b.vy += J * ny;
+        m.omega += (-J * (rx * ny - ry * nx)) / 1800;
+        if (m.omega > 14) m.omega = 14; else if (m.omega < -14) m.omega = -14;
+      }
+    }
   }
 
   _sense(b) {
@@ -103,6 +133,13 @@ export class PhysicsWorld {
         return { type: 'gate', ballId: b.id, terminal: false };
       }
       return { type: 'port', port: s.port, sensorId: s.id, ballId: b.id, terminal: true };
+    }
+    // ワープ: 液晶枠の入口に入った玉をステージへ移す（見た目はワープ演出、物理上は位置の瞬間移動）
+    const w = this.P.warp;
+    if (!b.warped && b.x > w.x0 && b.x < w.x1 && b.y > w.y - 12 && b.y < w.y + 10) {
+      b.warped = true; const L = this.P.lcd;
+      b.x = L.x + 14 + (this.rng.nextInt(1000) / 1000) * 10; b.y = this.P.stage.y - 8; b.vx = 70 + this.rng.nextInt(60); b.vy = 0;
+      return { type: 'warp', ballId: b.id, terminal: false };
     }
     // 滞留・長時間の玉はアウト扱い（盤面詰まり防止）
     const sp2 = b.vx * b.vx + b.vy * b.vy;

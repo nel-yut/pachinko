@@ -5,17 +5,17 @@ import { validateConfig } from '../core/config-validate.js';
 import { createSecureRng, deriveSeededRng } from '../core/rng.js';
 import { GameSession } from '../game/session.js';
 import { createEffectPack } from '../effects/placeholder-pack.js';
-import { drawBoard } from './render.js';
+import { drawBoard, dialHit, dialStrength, CANVAS_W, CANVAS_H } from './render.js';
 import { FEATURES } from '../config/features.js';
 import { theory } from '../verify/theory.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board'), ctx = canvas.getContext('2d');
-const LEFT_STRENGTH = 0.15, RIGHT_STRENGTH = 0.7;
+const LEFT_STRENGTH = 0.22, RIGHT_STRENGTH = 0.75;
 const MODE_LABEL = { normal: '通常(低確率)', jitan: '時短中', st: 'ST中(高確率)', jackpot: '大当たり中' };
 
 let session = null, effects = createEffectPack(), config = null, issues = [];
-let holding = false, counters = null, ui = { spinLabel: '' };
+let holding = false, counters = null, ui = { spinLabel: '', snap: null, strength: 0.22, holding: false };
 const logEl = $('log');
 
 if (FEATURES.verification) $('verifyLink').hidden = false;
@@ -98,32 +98,38 @@ function onMachineEvent(name, p) {
 
 // ---------- 入力（マウス/タッチ共通） ----------
 const strengthEl = $('strength');
-const setStrength = (v) => { strengthEl.value = v; $('strengthOut').textContent = Number(v).toFixed(2); };
+const setStrength = (v) => { strengthEl.value = v; $('strengthOut').textContent = Number(v).toFixed(2); ui.strength = Number(v); };
 strengthEl.addEventListener('input', () => setStrength(strengthEl.value));
 $('leftBtn').addEventListener('click', () => { $('auto').checked = false; setStrength(LEFT_STRENGTH); });
 $('rightBtn').addEventListener('click', () => { $('auto').checked = false; setStrength(RIGHT_STRENGTH); });
 const fireBtn = $('fireBtn');
-const press = (on) => { holding = on; fireBtn.classList.toggle('on', on); };
+const press = (on) => { holding = on; ui.holding = on; fireBtn.classList.toggle('on', on); };
 fireBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); fireBtn.setPointerCapture?.(e.pointerId); press(true); });
 for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) fireBtn.addEventListener(ev, () => press(false));
 fireBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 addEventListener('keydown', (e) => { if (e.code === 'Space' && e.target === document.body) { e.preventDefault(); press(true); } });
 addEventListener('keyup', (e) => { if (e.code === 'Space') press(false); });
-// 盤面の長押しでも発射（タッチ/マウス共通）
-canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture?.(e.pointerId); press(true); });
-for (const ev of ['pointerup', 'pointercancel']) canvas.addEventListener(ev, () => press(false));
+// ハンドル(盤面下のダイヤル)を握って回す = 発射。マウス/タッチ共通の Pointer Events。
+let dragging = false;
+const toLogical = (e) => { const r = canvas.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * CANVAS_W, ((e.clientY - r.top) / r.height) * CANVAS_H]; };
+canvas.addEventListener('pointerdown', (e) => {
+  const [x, y] = toLogical(e);
+  if (dialHit(x, y)) { dragging = true; canvas.setPointerCapture?.(e.pointerId); $('auto').checked = false; setStrength(dialStrength(x, y, Number(strengthEl.value))); press(true); e.preventDefault(); }
+});
+canvas.addEventListener('pointermove', (e) => { if (dragging) { const [x, y] = toLogical(e); setStrength(dialStrength(x, y, Number(strengthEl.value))); } });
+for (const ev of ['pointerup', 'pointercancel']) canvas.addEventListener(ev, () => { if (dragging) { dragging = false; press(false); } });
 
 // ---------- ループ ----------
 function resizeCanvas() {
   const dpr = Math.min(3, window.devicePixelRatio || 1), r = canvas.getBoundingClientRect();
-  const w = Math.max(240, Math.round(r.width * dpr)), h = Math.round((w * 640) / 480);
+  const w = Math.max(240, Math.round(r.width * dpr)), h = Math.round((w * CANVAS_H) / CANVAS_W);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 }
 function render() {
   resizeCanvas();
-  ctx.setTransform(canvas.width / 480, 0, 0, canvas.height / 640, 0, 0);
+  ctx.setTransform(canvas.width / CANVAS_W, 0, 0, canvas.height / CANVAS_H, 0, 0);
   if (!session) {
-    ctx.fillStyle = '#1a1020'; ctx.fillRect(0, 0, 480, 640);
+    ctx.fillStyle = '#1a1020'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = '#ffb86b'; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center';
     ctx.fillText('この台設定では遊技を開始できません', 240, 280);
     ctx.font = '13px system-ui'; ctx.fillStyle = '#e8eefc';
@@ -131,6 +137,7 @@ function render() {
     ctx.fillText('「台設定」パネルの一覧を確認してください', 240, 332);
     return;
   }
+  ui.snap = session.machine.snapshot();
   drawBoard(ctx, session, effects, ui);
 }
 let lastT = performance.now(), hudT = 0;

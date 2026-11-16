@@ -5,7 +5,7 @@ import { buildGenericStLayout, DEFAULT_BOARD_PARAMS } from '../physics/layout.js
 import { PhysicsWorld } from '../physics/world.js';
 import { deriveSeededRng } from '../core/rng.js';
 
-export function runPhysicsReport({ seed = 1, ballsPerStrength = 300, strengths = [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 0.7, 1], params = DEFAULT_BOARD_PARAMS, shutters = { denchuOpen: false, attackerOpen: false } } = {}) {
+export function runPhysicsReport({ seed = 1, ballsPerStrength = 300, strengths = [0, 0.1, 0.15, 0.2, 0.22, 0.3, 0.4, 0.5, 0.6, 0.75, 1], params = DEFAULT_BOARD_PARAMS, shutters = { denchuOpen: false, attackerOpen: false } } = {}) {
   const layout = buildGenericStLayout(params);
   const rows = [];
   for (const s of strengths) {
