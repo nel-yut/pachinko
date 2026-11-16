@@ -1,6 +1,7 @@
 // 筐体＋盤面の描画（読み取り専用）。物理・遊技状態を描くだけで、状態は変更しない。
 // 論理座標 480x760: 盤面 0..640、その下(640..760)に上皿・下皿・ハンドル。
-export const CANVAS_W = 480, CANVAS_H = 760;
+export const CANVAS_W = 480;
+export const CANVAS_H = 760;
 export const DIAL = { x: 408, y: 702, r: 44 };
 const lerp = (a, b, t) => a + (b - a) * t;
 const rad = (d) => (d * Math.PI) / 180;

@@ -21,6 +21,7 @@ for p in order:
     if p == 'src/config/features.js' and no_verify:
         src = 'export const FEATURES = { verification: false };\n'
     exports = []
+    if re.search(r'^export\s+(?:const|let)\s+\w+\s*=[^;\n]*,\s*\w+\s*=', src, flags=re.M): raise SystemExit(f'{p}: 1行で複数の export 定数宣言は未対応。分けて書くこと')
     def imp(m):
         names, path = m.group(1), m.group(2)
         target = str((root / pathlib.Path(p).parent / path).resolve().relative_to(root))
