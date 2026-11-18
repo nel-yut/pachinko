@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>機甲覚醒15 パチンコシミュレーター</title>
+<style>
+  :root{--bg:#0d0b16;--panel:#1a1730;--ink:#eee;--acc:#8f5cff;--hot:#ff4d4d;--gold:#ffd24d}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,"Hiragino Sans","Noto Sans JP",sans-serif}
+  .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;padding:16px}
+  canvas{background:#10241c;border:3px solid #444;border-radius:8px;max-width:100%;touch-action:none}
+  .side{width:300px;max-width:100%;display:flex;flex-direction:column;gap:10px}
+  .box{background:var(--panel);border-radius:8px;padding:10px 12px}
+  h1{font-size:18px;margin:0 0 4px;color:var(--gold)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:14px}
+  .grid b{font-variant-numeric:tabular-nums;text-align:right}
+  label{display:block;font-size:13px;margin:6px 0 2px}
+  input[type=range]{width:100%}
+  button{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:7px 12px;font-size:14px;cursor:pointer;margin:2px 2px 0 0}
+  button.on{background:var(--hot)}
+  #log{font-size:12px;max-height:150px;overflow:auto;line-height:1.5}
+  small{opacity:.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="c" width="420" height="640"></canvas>
+  <div class="side">
+    <div class="box">
+      <h1>機甲覚醒15</h1>
+      <small>1/319.7 ・ 確変ST163回(1/99.9) ・ 時短100回。エヴァ15の仕組みを参考にしたオリジナルシミュレーター</small>
+    </div>
+    <div class="box grid">
+      <span>持ち玉</span><b id="sBalls">0</b>
+      <span>回転数(通常)</span><b id="sSpin">0</b>
+      <span>総回転数</span><b id="sTotal">0</b>
+      <span>大当り回数</span><b id="sHits">0</b>
+      <span>最高連チャン</span><b id="sMax">0</b>
+      <span>収支(玉)</span><b id="sPL">0</b>
+      <span>状態</span><b id="sMode">通常</b>
+    </div>
+    <div class="box">
+      <label>発射強さ <span id="pv"></span></label>
+      <input id="power" type="range" min="2" max="9" step="0.1" value="5.2">
+      <label>速度</label>
+      <button data-sp="1" class="on">×1</button><button data-sp="4">×4</button><button data-sp="12">×12</button><button data-sp="40">×40</button>
+      <div style="margin-top:8px">
+        <button id="auto" class="on">自動打ち出し ON</button>
+        <button id="add">+500玉</button>
+      </div>
+    </div>
+    <div class="box"><div id="log"><small>大当り履歴</small></div></div>
+  </div>
+</div>
+<script>
+"use strict";
+const W=420,H=640,cv=document.getElementById('c'),g=cv.getContext('2d');
+// ---- 設定 ----
+const P_NORMAL=1/319.7,P_ST=1/99.9,ST_SPINS=163,JITAN_SPINS=100;
+const LCD={x:90,y:50,w:240,h:170};
+const CHUCKER={x:190,y:548,w:40,h:14}, ATTACK={x:140,y:596,w:140,h:16};
+// ---- 状態 ----
+const S={balls:500,start:0,spinN:0,total:0,hits:0,chain:0,maxChain:0,paid:0,spent:500,
+  mode:'normal',left:0,hold:[],spin:null,bonus:null,auto:true,speed:1,fireT:0,flash:0,banner:null};
+const balls=[],pegs=[];
+// ---- 釘配置 ----
+for(let r=0,y=36;y<640;r++,y+=26){
+  for(let x=(r%2?20:34);x<W-12;x+=28){
+    const inLcd=x>LCD.x-14&&x<LCD.x+LCD.w+14&&y>LCD.y-14&&y<LCD.y+LCD.h+14;
+    const inBottom=x>90&&x<330&&y>430;
+    if(!inLcd&&!inBottom&&x>16&&x<404)pegs.push({x,y});
+  }
+}
+for(let i=0;i<7;i++){pegs.push({x:100+i*15,y:440+i*14});pegs.push({x:320-i*15,y:440+i*14});}
+pegs.push({x:176,y:540},{x:244,y:540},{x:150,y:575},{x:270,y:575});
+// ---- 発射 ----
+function fire(){
+  if(S.balls<=0)return;S.balls--;
+  const p=+document.getElementById('power').value;
+  balls.push({x:402,y:30,vx:-(p+Math.random()*.5),vy:Math.random()*.5});
+}
+// ---- 物理 ----
+function step(){
+  for(let i=balls.length-1;i>=0;i--){
+    const b=balls[i];b.vy+=.12;b.x+=b.vx;b.y+=b.vy;
+    const sp=Math.hypot(b.vx,b.vy);if(sp>9){b.vx*=9/sp;b.vy*=9/sp;}
+    if(b.x<12){b.x=12;b.vx=Math.abs(b.vx)*.5;}
+    if(b.x>408){b.x=408;b.vx=-Math.abs(b.vx)*.5;}
+    if(b.y<10){b.y=10;b.vy=Math.abs(b.vy)*.5;}
+    for(const p of pegs){
+      const dx=b.x-p.x,dy=b.y-p.y;if(dx>9||dx<-9||dy>9||dy<-9)continue;
+      const d=Math.hypot(dx,dy),R=3+4;
+      if(d<R&&d>0){const nx=dx/d,ny=dy/d,vn=b.vx*nx+b.vy*ny;
+        b.x=p.x+nx*R;b.y=p.y+ny*R;
+        if(vn<0){b.vx-=1.55*vn*nx;b.vy-=1.55*vn*ny;b.vx+=(Math.random()-.5)*.3;}}
+    }
+    // 液晶(固い枠)
+    if(b.x>LCD.x-4&&b.x<LCD.x+LCD.w+4&&b.y>LCD.y-4&&b.y<LCD.y+LCD.h+4){
+      const l=b.x-(LCD.x-4),r=LCD.x+LCD.w+4-b.x,t=b.y-(LCD.y-4),bt=LCD.y+LCD.h+4-b.y,m=Math.min(l,r,t,bt);
+      if(m===t){b.y=LCD.y-4;b.vy=-Math.abs(b.vy)*.4;b.vx+=(b.x<LCD.x+LCD.w/2?-1:1)*.6;}
+      else if(m===l){b.x=LCD.x-4;b.vx=-Math.abs(b.vx)*.5;}
+      else if(m===r){b.x=LCD.x+LCD.w+4;b.vx=Math.abs(b.vx)*.5;}
+      else{b.y=LCD.y+LCD.h+4;b.vy=Math.abs(b.vy)*.4;}
+    }
+    // スタートチャッカー
+    if(b.x>CHUCKER.x&&b.x<CHUCKER.x+CHUCKER.w&&b.y>CHUCKER.y&&b.y<CHUCKER.y+CHUCKER.h){
+      balls.splice(i,1);S.balls+=3;S.paid+=3;S.start++;
+      if(S.hold.length<4)S.hold.push(Math.random());
+      continue;
+    }
+    // アタッカー
+    if(S.bonus&&S.bonus.open&&b.x>ATTACK.x&&b.x<ATTACK.x+ATTACK.w&&b.y>ATTACK.y&&b.y<ATTACK.y+ATTACK.h){
+      balls.splice(i,1);S.balls+=15;S.paid+=15;S.bonus.count++;
+      if(S.bonus.count>=10)endRound();
+      continue;
+    }
+    if(b.y>H+10)balls.splice(i,1);
+  }
+}
+// ---- 抽選・演出 ----
+const rnd=n=>Math.floor(Math.random()*n);
+function startSpin(r){
+  const hitP=(S.mode==='st')?P_ST:P_NORMAL, win=r<hitP;
+  const sp={t:0,win,L:0,C:0,R:0,reach:0,kaku:false,dur:260,fake:false};
+  if(win){
+    sp.reach=[1,1,2,2,2,3][rnd(6)];
+    const kaku=(S.mode==='st')||Math.random()<.5;
+    sp.kaku=kaku;
+    const d=kaku?[1,3,5,7,9][rnd(5)]:[2,4,6,8][rnd(4)];
+    sp.L=sp.C=sp.R=d;
+  }else{
+    const rr=Math.random();
+    sp.reach=rr<.78?0:rr<.94?1:rr<.99?2:3;
+    sp.L=1+rnd(9);
+    if(sp.reach){sp.R=sp.L;do{sp.C=1+rnd(9)}while(sp.C===sp.L);}
+    else{do{sp.R=1+rnd(9)}while(sp.R===sp.L);sp.C=1+rnd(9);}
+  }
+  sp.dur=sp.reach?[0,380,540,700][sp.reach]:260;
+  S.spin=sp;S.total++;if(S.mode!=='bonus'){}
+  if(S.mode==='normal'||S.mode==='jitan')S.spinN++;
+  if(sp.reach>=2){S.banner={t:0,text:sp.reach===3?'覚醒リーチ!!':'スーパーリーチ!'};}
+}
+function endSpin(){
+  const sp=S.spin;S.spin=null;
+  if(S.mode==='st'||S.mode==='jitan')S.left--;
+  if(sp.win){startBonus(sp);return;}
+  if(S.left<=0&&(S.mode==='st'||S.mode==='jitan')){
+    log(S.mode==='st'?'ST終了(引き戻しなし)':'時短終了');S.mode='normal';S.chain=0;S.spinN=0;}
+}
+// ---- 大当り ----
+function startBonus(sp){
+  const inSt=S.mode==='st';
+  let rounds,next;
+  if(inSt){rounds=Math.random()<.7?10:5;next='st';}
+  else if(sp.kaku){rounds=10;next='st';}
+  else{rounds=4;next='jitan';}
+  S.hits++;S.chain++;S.maxChain=Math.max(S.maxChain,S.chain);
+  S.bonus={rounds,round:0,count:0,timer:0,open:false,next,wait:90,from:S.mode};
+  S.mode='bonus';S.flash=60;
+  S.banner={t:0,text:S.chain>1?`${S.chain}連チャン!`:'大当り!!'};
+  log(`${S.chain}連目 ${rounds}R ${next==='st'?'確変':'通常→時短'}`);
+}
+function endRound(){const b=S.bonus;b.open=false;b.wait=60;b.count=0;}
+function bonusTick(){
+  const b=S.bonus;
+  if(b.open){b.timer++;if(b.timer>600)endRound();return;}
+  if(--b.wait>0)return;
+  if(b.round>=b.rounds){
+    S.bonus=null;
+    if(b.next==='st'){S.mode='st';S.left=ST_SPINS;}else{S.mode='jitan';S.left=JITAN_SPINS;S.chain=0;}
+    return;
+  }
+  b.round++;b.open=true;b.timer=0;b.count=0;
+}
+// ---- メインループ ----
+function tick(){
+  if(S.auto&&++S.fireT>=36){S.fireT=0;fire();}
+  step();
+  if(S.bonus)bonusTick();
+  if(!S.spin&&S.hold.length&&S.mode!=='bonus')startSpin(S.hold.shift());
+  else if(S.spin&&S.mode!=='bonus'&&++S.spin.t>=S.spin.dur)endSpin();
+  if(S.flash>0)S.flash--;
+  if(S.banner&&++S.banner.t>90)S.banner=null;
+}
+// ---- 描画 ----
+function symbol(n,x,y,w,h,spinning,tt,kaku){
+  g.fillStyle='#000';g.fillRect(x,y,w,h);
+  g.font=`bold ${h*.8}px sans-serif`;g.textAlign='center';g.textBaseline='middle';
+  const v=spinning?1+(Math.floor(tt/3)%9):n;
+  g.fillStyle=spinning?'#777':(n%2?'#ff6b6b':'#6bd4ff');
+  g.fillText(v,x+w/2,y+h/2+2);
+}
+function draw(){
+  const m=S.mode;
+  g.fillStyle=m==='st'?'#2a0f33':m==='bonus'?'#3b2a00':m==='jitan'?'#0f2a3a':'#10241c';
+  g.fillRect(0,0,W,H);
+  if(S.flash&&S.flash%8<4){g.fillStyle='rgba(255,255,255,.25)';g.fillRect(0,0,W,H);}
+  // 釘
+  g.fillStyle='#d8d8d8';for(const p of pegs){g.beginPath();g.arc(p.x,p.y,3,0,7);g.fill();}
+  // 液晶
+  g.fillStyle='#14102a';g.fillRect(LCD.x,LCD.y,LCD.w,LCD.h);
+  g.strokeStyle='#8f5cff';g.lineWidth=3;g.strokeRect(LCD.x,LCD.y,LCD.w,LCD.h);
+  const sp=S.spin,sw=62,sh=84,sy=LCD.y+40,xs=[LCD.x+20,LCD.x+89,LCD.x+158];
+  if(sp&&m!=='bonus'){
+    const t=sp.t,stopL=70,stopR=sp.reach?130:170,stopC=sp.dur-10;
+    symbol(sp.L,xs[0],sy,sw,sh,t<stopL,t);
+    symbol(sp.R,xs[2],sy,sw,sh,t<stopR,t+5);
+    symbol(sp.C,xs[1],sy,sw,sh,t<stopC,t+9);
+    if(sp.reach&&t>=stopR&&t<stopC){g.fillStyle=['','#ffb84d','#ff4d4d','#ffd24d'][sp.reach];g.font='bold 18px sans-serif';g.textAlign='center';g.fillText(['','REACH','SUPER REACH','AWAKEN'][sp.reach],LCD.x+LCD.w/2,LCD.y+22);}
+    if(t>=stopC&&sp.win){g.fillStyle='#ffd24d';g.font='bold 22px sans-serif';g.textAlign='center';g.fillText('GET!',LCD.x+LCD.w/2,LCD.y+LCD.h-22);}
+  }else{
+    for(const x of xs)symbol(0,x,sy,sw,sh,false,0);
+    g.fillStyle='#8f5cff';g.font='bold 16px sans-serif';g.textAlign='center';
+    g.fillText(m==='bonus'?`${S.bonus?S.bonus.round:0}R / ${S.bonus?S.bonus.rounds:0}R`:'機甲覚醒 15',LCD.x+LCD.w/2,LCD.y+22);
+  }
+  g.fillStyle='#aaa';g.font='13px sans-serif';g.textAlign='center';
+  const info=m==='st'?`ST 残り${S.left}回`:m==='jitan'?`時短 残り${S.left}回`:m==='bonus'?'大当り中':'通常';
+  g.fillText(info,LCD.x+LCD.w/2,LCD.y+LCD.h-8);
+  // 保留
+  for(let i=0;i<4;i++){g.fillStyle=i<S.hold.length?'#ffd24d':'#333';g.beginPath();g.arc(LCD.x+LCD.w/2-30+i*20,LCD.y+LCD.h+22,6,0,7);g.fill();}
+  // チャッカー・アタッカー
+  g.fillStyle='#4dff88';g.fillRect(CHUCKER.x,CHUCKER.y,CHUCKER.w,CHUCKER.h);
+  g.fillStyle=S.bonus&&S.bonus.open?'#ffd24d':'#555';g.fillRect(ATTACK.x,ATTACK.y,ATTACK.w,ATTACK.h);
+  if(S.bonus&&S.bonus.open){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(`${S.bonus.count}/10`,ATTACK.x+ATTACK.w/2,ATTACK.y+12);}
+  // 玉
+  g.fillStyle='#e8e8ff';for(const b of balls){g.beginPath();g.arc(b.x,b.y,4,0,7);g.fill();}
+  // バナー
+  if(S.banner){const a=Math.min(1,S.banner.t/10);g.save();g.globalAlpha=1-Math.max(0,(S.banner.t-70)/20);
+    g.fillStyle='rgba(0,0,0,.65)';g.fillRect(0,300,W,70);g.fillStyle='#ff4d4d';g.font=`bold ${40*a+8}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(S.banner.text,W/2,336);g.restore();g.textBaseline='alphabetic';}
+}
+// ---- UI ----
+const $=id=>document.getElementById(id);
+function log(t){const d=document.createElement('div');d.textContent=`[${S.total}回転] ${t}`;$('log').prepend(d);}
+function ui(){
+  $('sBalls').textContent=S.balls;$('sSpin').textContent=S.spinN;$('sTotal').textContent=S.total;
+  $('sHits').textContent=S.hits;$('sMax').textContent=S.maxChain;
+  $('sPL').textContent=(S.balls-S.spent);
+  $('sMode').textContent={normal:'通常',st:'確変ST',jitan:'時短',bonus:'大当り'}[S.mode];
+  $('pv').textContent=$('power').value;
+}
+document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{S.speed=+b.dataset.sp;document.querySelectorAll('[data-sp]').forEach(x=>x.classList.toggle('on',x===b));});
+$('auto').onclick=e=>{S.auto=!S.auto;e.target.classList.toggle('on',S.auto);e.target.textContent='自動打ち出し '+(S.auto?'ON':'OFF');};
+$('add').onclick=()=>{S.balls+=500;S.spent+=500;};
+cv.onclick=fire;
+function loop(){for(let i=0;i<S.speed;i++)tick();draw();ui();requestAnimationFrame(loop);}
+loop();
+// テスト用
+window.__S=S;
+</script>
+</body>
+</html>
