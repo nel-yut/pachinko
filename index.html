@@ -62,7 +62,7 @@ const W=420,H=640,cv=document.getElementById('c'),g=cv.getContext('2d');
 const P_NORMAL=1/319.7,P_ST=1/99.9,ST_SPINS=163,JITAN_SPINS=100;
 const LCD={x:100,y:80,w:220,h:160};
 const CX=210,CY=210,RO=196,RI=184,RMID=190,INNER_END=62*Math.PI/180;
-const CHUCKER={x:190,y:548,w:40,h:14};          // ヘソ
+const CHUCKER={x:187,y:548,w:46,h:14};          // ヘソ
 const ATTACK={x:296,y:588,w:96,h:14};           // 大入賞口
 const DENCHU={x:350,y:508,w:34,h:10};           // 電チュー
 const GATE={x:346,y:326,w:38,h:8};              // ゲート
@@ -92,15 +92,6 @@ const PEG_OK=(x,y)=>{
   if(y>600)return false;
   return true;
 };
-// 上半分はレールに沿った円弧状の釘列
-for(const R of [166,142,118]){
-  const n=Math.floor(Math.PI*R/24),off=R===142?.5:0;
-  for(let i=0;i<=n;i++){const a=(i+off)/n*Math.PI;const x=CX-R*Math.cos(a),y=CY-R*Math.sin(a);if(y<CY-4&&PEG_OK(x,y))pegs.push({x,y});}
-}
-// 下半分は千鳥格子
-for(let r=0,y=CY+8;y<600;r++,y+=22){
-  for(let x=(r%2?26:38);x<372;x+=24){if(PEG_OK(x,y))pegs.push({x,y});}
-}
 // 右レーン(2本の列を交互に)
 for(let y=262,i=0;y<490;y+=20,i++){pegs.push({x:i%2?354:372,y});}
 // 入賞口の「屋根釘」
@@ -108,10 +99,63 @@ for(const p of POCKETS){pegs.push({x:p.x+p.w/2-9,y:p.y-12},{x:p.x+p.w/2+9,y:p.y-
 // 寄せ釘(V字)・ヘソ周り
 for(let i=0;i<7;i++){pegs.push({x:108+i*13,y:440+i*12});pegs.push({x:312-i*13,y:440+i*12});}
 pegs.push({x:184,y:536},{x:236,y:536},{x:160,y:572},{x:260,y:572},{x:196,y:596},{x:224,y:596},{x:100,y:582},{x:60,y:590},{x:140,y:596},{x:280,y:596});
+// ---- 手打ち風の釘群(格子ではなく、道釘・風車まわり・寄せ釘などの塊) ----
+{
+  let seed=11;const rnd=()=>(seed=seed*16807%2147483647)/2147483647;
+  const tmp=[];
+  const P=(x,y)=>tmp.push({x:x+(rnd()-.5)*2.4,y:y+(rnd()-.5)*2.4});
+  const LINE=(x1,y1,x2,y2,n)=>{for(let i=0;i<n;i++){const t=n>1?i/(n-1):0;P(x1+(x2-x1)*t,y1+(y2-y1)*t);}};
+  const ARC=(cx,cy,r,a1,a2,n)=>{for(let i=0;i<n;i++){const a=(a1+(a2-a1)*(n>1?i/(n-1):0))*Math.PI/180;P(cx+r*Math.cos(a),cy+r*Math.sin(a));}};
+  // 上部: レールに沿う道釘(間隔不揃い・一部欠け)
+  const RING=(R,sp,skip)=>{const n=Math.floor(Math.PI*R/sp);for(let i=1;i<n;i++){if(rnd()<skip)continue;const a=(i+(rnd()-.5)*.5)/n*Math.PI;P(CX-R*Math.cos(a),CY-R*Math.sin(a));}};
+  RING(168,18,.08);RING(146,23,.18);RING(124,27,.3);RING(102,32,.4);
+  // 左: 道釘・風車の囲い・斜めの寄せ
+  LINE(30,252,30,340,6);ARC(56,300,31,10,170,5);
+  LINE(46,372,92,398,4);LINE(30,430,70,452,3);LINE(30,478,100,522,5);
+  P(70,345);P(88,332);P(78,420);
+  // 中央左: 斜めの流れ+三角
+  LINE(112,296,164,336,4);P(132,372);P(160,388);P(184,364);P(104,420);
+  // 中央右: かまぼこ+斜め
+  ARC(262,362,34,205,335,5);LINE(302,416,254,434,4);P(236,322);P(270,300);P(300,346);
+  // 天釘(ステージ穴の真下で玉を散らす)
+  P(199,296);P(221,296);P(210,322);
+  // 右上〜レーン入口への誘導
+  LINE(322,170,332,236,4);P(300,246);
+  // 下部: 散らし釘
+  P(58,560);P(94,570);P(120,552);P(300,500);P(330,520);P(276,520);
+  const ok=(p)=>{
+    const {x,y}=p;
+    if(x<22||x>376||y<24||y>610)return false;
+    if(y<CY&&Math.hypot(x-CX,y-CY)>RI-14)return false;
+    if(x>LCD.x-14&&x<LCD.x+LCD.w+14&&y>LCD.y-14&&y<LCD.y+LCD.h+14)return false;
+    if(y>236&&y<286&&x>96&&x<324)return false;
+    if(y>236&&y<512&&x>=334)return false;
+    if(y>=512&&x>290)return false;
+    if(WM.some(w=>near(x,y,w,24)))return false;
+    if(near(x,y,{x:WARP.x+11,y:WARP.y+5},18))return false;
+    if(POCKETS.some(q=>x>q.x-8&&x<q.x+q.w+8&&y>q.y-14&&y<q.y+q.h+8))return false;
+    if(x>=186&&x<=234&&y>270&&y<430&&Math.abs(y-296)>8&&Math.abs(y-322)>8)return false;
+    for(const q of [CHUCKER,ATTACK,DENCHU,GATE])if(x>q.x-12&&x<q.x+q.w+12&&y>q.y-14&&y<q.y+q.h+10)return false;
+    for(const s of SEG){const dx=s[2]-s[0],dy=s[3]-s[1],t=Math.max(0,Math.min(1,((x-s[0])*dx+(y-s[1])*dy)/(dx*dx+dy*dy)));
+      if(Math.hypot(x-s[0]-dx*t,y-s[1]-dy*t)<10)return false;}
+    for(const q of pegs)if(Math.hypot(x-q.x,y-q.y)<14)return false;
+    return true;
+  };
+  for(const p of tmp)if(ok(p))pegs.push(p);
+  // 空きを不規則な間隔(ブルーノイズ)で埋める: 場所により疎密が出る
+  const dens=(x,y)=>y<300?20:(y>430?40:30);
+  for(let k=0;k<6000;k++){
+    const p={x:22+rnd()*354,y:24+rnd()*586};
+    if(!ok(p))continue;
+    const d=dens(p.x,p.y);let free=true;
+    for(const q of pegs)if(Math.hypot(p.x-q.x,p.y-q.y)<d){free=false;break;}
+    if(free)pegs.push(p);
+  }
+}
 // ---- 発射 ----
 function rightSide(){return S.side==='right'||(S.side==='auto'&&(S.mode==='bonus'||S.mode==='st'||S.mode==='jitan'));}
 function fire(){
-  if(S.balls<=0)return;S.balls--;
+  if(S.balls<=0)return;S.balls--;S.fired=(S.fired||0)+1;
   const p=(+document.getElementById('power').value-2)/7;
   const r=rightSide();
   balls.push({x:CX+RMID,y:630,vx:0,vy:0,rail:1,rp:630,phi:0,fe:(r?40:70+p*55+Math.random()*4)*Math.PI/180,v:r?.6:4.5,idle:0});
