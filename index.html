@@ -29,7 +29,7 @@
   <div class="side">
     <div class="box">
       <h1>機甲覚醒15</h1>
-      <small>1/319.7 ・ 確変ST163回(1/99.9) ・ 時短100回。エヴァ15の仕組みを参考にしたオリジナルシミュレーター</small>
+      <small>1/319.7 ・ 確変ST163回(1/99.9) ・ 時短100回。ステージ/ワープ/風車/ゲート/電チュー/右打ちレーン付きの盤面。左打ちで通常時、大当り・電サポ中は右打ち(自動で切替)</small>
     </div>
     <div class="box grid">
       <span>持ち玉</span><b id="sBalls">0</b>
@@ -46,6 +46,8 @@
       <label>速度</label>
       <button data-sp="1" class="on">×1</button><button data-sp="4">×4</button><button data-sp="12">×12</button><button data-sp="40">×40</button>
       <div style="margin-top:8px">
+        <div><small>打ち方</small>
+        <button data-side="auto" class="on">自動</button><button data-side="left">左</button><button data-side="right">右</button></div>
         <button id="auto" class="on">自動打ち出し ON</button>
         <button id="add">+500玉</button>
       </div>
@@ -58,44 +60,95 @@
 const W=420,H=640,cv=document.getElementById('c'),g=cv.getContext('2d');
 // ---- 設定 ----
 const P_NORMAL=1/319.7,P_ST=1/99.9,ST_SPINS=163,JITAN_SPINS=100;
-const LCD={x:90,y:50,w:240,h:170};
-const CHUCKER={x:190,y:548,w:40,h:14}, ATTACK={x:140,y:596,w:140,h:16};
+const LCD={x:100,y:80,w:220,h:160};
+const CX=210,CY=210,RO=196,RI=184,RMID=190,INNER_END=62*Math.PI/180;
+const CHUCKER={x:190,y:548,w:40,h:14};          // ヘソ
+const ATTACK={x:296,y:588,w:96,h:14};           // 大入賞口
+const DENCHU={x:350,y:508,w:34,h:10};           // 電チュー
+const GATE={x:346,y:326,w:38,h:8};              // ゲート
+const WARP={x:68,y:150,w:22,h:10};              // ワープ入口
+const POCKETS=[{x:26,y:440,w:22,h:10},{x:30,y:560,w:22,h:10},{x:262,y:556,w:22,h:10},{x:300,y:262,w:0,h:0}].slice(0,3);
+const WM=[{x:58,y:300,a:0},{x:292,y:330,a:1},{x:120,y:400,a:2}];
+const SEG=[[122,258,196,270],[298,258,224,270],[122,258,122,246],[298,258,298,246],[338,245,338,505],[346,506,388,513]];
 // ---- 状態 ----
 const S={balls:500,start:0,spinN:0,total:0,hits:0,chain:0,maxChain:0,paid:0,spent:500,
-  mode:'normal',left:0,hold:[],spin:null,bonus:null,auto:true,speed:1,fireT:0,flash:0,banner:null};
+  mode:'normal',left:0,hold:[],spin:null,bonus:null,auto:true,speed:1,fireT:0,flash:0,banner:null,
+  side:'auto',denT:0};
 const balls=[],pegs=[];
 // ---- 釘配置 ----
-for(let r=0,y=36;y<640;r++,y+=26){
-  for(let x=(r%2?20:34);x<W-12;x+=28){
-    const inLcd=x>LCD.x-14&&x<LCD.x+LCD.w+14&&y>LCD.y-14&&y<LCD.y+LCD.h+14;
-    const inBottom=x>90&&x<330&&y>430;
-    if(!inLcd&&!inBottom&&x>16&&x<404)pegs.push({x,y});
+const near=(x,y,c,r)=>Math.hypot(x-c.x,y-c.y)<r;
+for(let r=0,y=30;y<620;r++,y+=26){
+  for(let x=(r%2?22:36);x<390;x+=28){
+    if(y<CY&&Math.hypot(x-CX,y-CY)>RO-14)continue;
+    if(x>LCD.x-14&&x<LCD.x+LCD.w+14&&y>LCD.y-14&&y<LCD.y+LCD.h+14)continue;
+    if(y>245&&y<280&&x>100&&x<320)continue;               // ステージ
+    if(x>=188&&x<=232&&y>270&&y<430)continue;             // 中央の落下ルート
+    if(y>430&&x>90&&x<330)continue;                       // ヘソ周り
+    if(y>245&&y<510&&x>324)continue;                      // 右レーン
+    if(y>=510&&x>285)continue;                            // 右下
+    if(WM.some(w=>near(x,y,w,30)))continue;
+    if(near(x,y,{x:WARP.x+11,y:WARP.y+5},16))continue;
+    if(POCKETS.some(p=>near(x,y,{x:p.x+p.w/2,y:p.y},18)))continue;
+    pegs.push({x,y});
   }
 }
-for(let i=0;i<7;i++){pegs.push({x:100+i*15,y:440+i*14});pegs.push({x:320-i*15,y:440+i*14});}
-pegs.push({x:176,y:540},{x:244,y:540},{x:150,y:575},{x:270,y:575});
+for(let y=270;y<490;y+=22){pegs.push({x:(y/22|0)%2?352:370,y});pegs.push({x:(y/22|0)%2?376:360,y:y+11});}
+for(let i=0;i<7;i++){pegs.push({x:108+i*13,y:440+i*12});pegs.push({x:312-i*13,y:440+i*12});}
+pegs.push({x:184,y:536},{x:236,y:536},{x:150,y:575},{x:196,y:600},{x:224,y:600},{x:60,y:600},{x:100,y:610},{x:250,y:600},{x:284,y:575});
 // ---- 発射 ----
+function rightSide(){return S.side==='right'||(S.side==='auto'&&(S.mode==='bonus'||S.mode==='st'||S.mode==='jitan'));}
 function fire(){
   if(S.balls<=0)return;S.balls--;
-  const p=+document.getElementById('power').value;
-  balls.push({x:402,y:30,vx:-(p+Math.random()*.5),vy:Math.random()*.5});
+  const p=(+document.getElementById('power').value-2)/7;
+  const r=rightSide();
+  balls.push({x:CX+RMID,y:630,vx:0,vy:0,rail:1,rp:630,phi:0,fe:(r?40:70+p*55+Math.random()*4)*Math.PI/180,v:r?.6:4.5,idle:0});
 }
 // ---- 物理 ----
+function segHit(b,x1,y1,x2,y2,e){
+  const dx=x2-x1,dy=y2-y1,t=Math.max(0,Math.min(1,((b.x-x1)*dx+(b.y-y1)*dy)/(dx*dx+dy*dy)));
+  const px=x1+dx*t,py=y1+dy*t,ex=b.x-px,ey=b.y-py,d=Math.hypot(ex,ey),R=5.5;
+  if(d<R&&d>0){const nx=ex/d,ny=ey/d,vn=b.vx*nx+b.vy*ny;b.x=px+nx*R;b.y=py+ny*R;
+    if(vn<0){b.vx-=(1+e)*vn*nx;b.vy-=(1+e)*vn*ny;b.vx+=(Math.random()-.5)*.2;}return true;}
+  return false;
+}
+const inR=(b,r)=>b.x>r.x&&b.x<r.x+r.w&&b.y>r.y&&b.y<r.y+r.h;
+function addStart(){if(S.hold.length<4)S.hold.push(Math.random());S.start++;}
 function step(){
+  for(const w of WM)w.a+=.06;
+  if(S.denT>0)S.denT--;
   for(let i=balls.length-1;i>=0;i--){
-    const b=balls[i];b.vy+=.12;b.x+=b.vx;b.y+=b.vy;
+    const b=balls[i];
+    if(b.rail){
+      if(b.rp>CY){b.rp-=6;b.x=CX+RMID;b.y=b.rp;}
+      else{b.phi+=6/RMID;b.x=CX+RMID*Math.cos(b.phi);b.y=CY-RMID*Math.sin(b.phi);
+        if(b.phi>=b.fe){b.rail=0;b.vx=-b.v*Math.sin(b.phi);b.vy=-b.v*Math.cos(b.phi);}}
+      continue;
+    }
+    b.vy+=.12;b.x+=b.vx;b.y+=b.vy;
     const sp=Math.hypot(b.vx,b.vy);if(sp>9){b.vx*=9/sp;b.vy*=9/sp;}
-    if(b.x<12){b.x=12;b.vx=Math.abs(b.vx)*.5;}
-    if(b.x>408){b.x=408;b.vx=-Math.abs(b.vx)*.5;}
-    if(b.y<10){b.y=10;b.vy=Math.abs(b.vy)*.5;}
+    // 外枠・内レール
+    if(b.y<CY){
+      const dx=b.x-CX,dy=b.y-CY,r=Math.hypot(dx,dy),ph=Math.atan2(-dy,dx);
+      const lim=(ph>0&&ph<INNER_END)?RI-6:RO-4;
+      if(r>lim){const nx=dx/r,ny=dy/r,vn=b.vx*nx+b.vy*ny;b.x=CX+nx*lim;b.y=CY+ny*lim;if(vn>0){b.vx-=1.5*vn*nx;b.vy-=1.5*vn*ny;}}
+    }else{
+      if(b.x<14){b.x=14;b.vx=Math.abs(b.vx)*.5;}
+      if(b.x>384){b.x=384;b.vx=-Math.abs(b.vx)*.5;}
+    }
     for(const p of pegs){
       const dx=b.x-p.x,dy=b.y-p.y;if(dx>9||dx<-9||dy>9||dy<-9)continue;
-      const d=Math.hypot(dx,dy),R=3+4;
+      const d=Math.hypot(dx,dy),R=7;
       if(d<R&&d>0){const nx=dx/d,ny=dy/d,vn=b.vx*nx+b.vy*ny;
         b.x=p.x+nx*R;b.y=p.y+ny*R;
         if(vn<0){b.vx-=1.55*vn*nx;b.vy-=1.55*vn*ny;b.vx+=(Math.random()-.5)*.3;}}
     }
-    // 液晶(固い枠)
+    // 風車
+    for(const w of WM){if(Math.abs(b.x-w.x)>24||Math.abs(b.y-w.y)>24)continue;
+      for(let k=0;k<3;k++){const a=w.a+k*2.0944;
+        if(segHit(b,w.x,w.y,w.x+Math.cos(a)*17,w.y+Math.sin(a)*17,.6))b.vx+=Math.cos(w.a)*.4;}}
+    // 固定ステージ・レーン壁
+    for(const s of SEG){if(s===SEG[5]&&S.denT>0&&b.x>346)continue;segHit(b,s[0],s[1],s[2],s[3],.45);}
+    // 液晶
     if(b.x>LCD.x-4&&b.x<LCD.x+LCD.w+4&&b.y>LCD.y-4&&b.y<LCD.y+LCD.h+4){
       const l=b.x-(LCD.x-4),r=LCD.x+LCD.w+4-b.x,t=b.y-(LCD.y-4),bt=LCD.y+LCD.h+4-b.y,m=Math.min(l,r,t,bt);
       if(m===t){b.y=LCD.y-4;b.vy=-Math.abs(b.vy)*.4;b.vx+=(b.x<LCD.x+LCD.w/2?-1:1)*.6;}
@@ -103,18 +156,15 @@ function step(){
       else if(m===r){b.x=LCD.x+LCD.w+4;b.vx=Math.abs(b.vx)*.5;}
       else{b.y=LCD.y+LCD.h+4;b.vy=Math.abs(b.vy)*.4;}
     }
-    // スタートチャッカー
-    if(b.x>CHUCKER.x&&b.x<CHUCKER.x+CHUCKER.w&&b.y>CHUCKER.y&&b.y<CHUCKER.y+CHUCKER.h){
-      balls.splice(i,1);S.balls+=3;S.paid+=3;S.start++;
-      if(S.hold.length<4)S.hold.push(Math.random());
-      continue;
-    }
-    // アタッカー
-    if(S.bonus&&S.bonus.open&&b.x>ATTACK.x&&b.x<ATTACK.x+ATTACK.w&&b.y>ATTACK.y&&b.y<ATTACK.y+ATTACK.h){
-      balls.splice(i,1);S.balls+=15;S.paid+=15;S.bonus.count++;
-      if(S.bonus.count>=10)endRound();
-      continue;
-    }
+    // 入賞判定
+    if(inR(b,WARP)){balls.splice(i,1);balls.push({x:150+Math.random()*120,y:249,vx:(Math.random()-.5)*2,vy:0,idle:0});continue;}
+    if(inR(b,CHUCKER)){balls.splice(i,1);S.balls+=3;S.paid+=3;addStart();continue;}
+    if(S.denT>0&&inR(b,DENCHU)){balls.splice(i,1);S.balls+=1;S.paid+=1;addStart();continue;}
+    if(inR(b,GATE)&&!b.gate){b.gate=1;if(S.mode==='st'||S.mode==='jitan')S.denT=150;}
+    if(S.bonus&&S.bonus.open&&inR(b,ATTACK)){balls.splice(i,1);S.balls+=15;S.paid+=15;S.bonus.count++;if(S.bonus.count>=10)endRound();continue;}
+    if(POCKETS.some(p=>inR(b,p))){balls.splice(i,1);S.balls+=5;S.paid+=5;continue;}
+    // 詰まり防止
+    if(Math.hypot(b.vx,b.vy)<.08){if(++b.idle>50){b.vx+=(Math.random()-.5)*2;b.vy-=.6;b.idle=0;}}
     if(b.y>H+10)balls.splice(i,1);
   }
 }
@@ -191,13 +241,58 @@ function symbol(n,x,y,w,h,spinning,tt,kaku){
   g.fillStyle=spinning?'#777':(n%2?'#ff6b6b':'#6bd4ff');
   g.fillText(v,x+w/2,y+h/2+2);
 }
+function lbl(t,x,y,c){g.fillStyle=c||'#9ab';g.font='10px sans-serif';g.textAlign='center';g.fillText(t,x,y);}
+function drawBoard(){
+  // 盤面の幾何模様
+  g.strokeStyle='rgba(143,92,255,.12)';g.lineWidth=1;
+  for(let i=-H;i<W;i+=40){g.beginPath();g.moveTo(i,H);g.lineTo(i+H,0);g.stroke();}
+  // レール
+  g.lineCap='round';
+  g.strokeStyle='#b8b8c8';g.lineWidth=4;
+  g.beginPath();g.moveTo(12,H);g.lineTo(12,CY);g.arc(CX,CY,RO+2,Math.PI,0);g.lineTo(CX+RO+2,H);g.stroke();
+  g.strokeStyle='#d8c070';g.lineWidth=3;
+  g.beginPath();g.moveTo(CX+RI,H-20);g.lineTo(CX+RI,CY);g.arc(CX,CY,RI,0,-INNER_END,true);g.stroke();
+  g.strokeStyle='#ff9d2e';g.lineWidth=3;g.beginPath();g.moveTo(CX+RI-1,CY+1);g.lineTo(CX+RI-1,CY-1);g.stroke();
+  // ステージ・右レーン壁・電チュー蓋
+  g.strokeStyle='#7fe3ff';g.lineWidth=3;
+  for(const s of SEG){if(s===SEG[5]&&S.denT>0)continue;g.beginPath();g.moveTo(s[0],s[1]);g.lineTo(s[2],s[3]);g.stroke();}
+  g.lineCap='butt';
+  lbl('STAGE',210,254,'#7fe3ff');
+  // 釘
+  g.fillStyle='#d8d8d8';for(const p of pegs){g.beginPath();g.arc(p.x,p.y,3,0,7);g.fill();}
+  // 風車
+  for(const w of WM){g.strokeStyle='#ffb84d';g.lineWidth=5;g.lineCap='round';
+    for(let k=0;k<3;k++){const a=w.a+k*2.0944;g.beginPath();g.moveTo(w.x,w.y);g.lineTo(w.x+Math.cos(a)*17,w.y+Math.sin(a)*17);g.stroke();}
+    g.fillStyle='#fff';g.beginPath();g.arc(w.x,w.y,4,0,7);g.fill();}
+  g.lineCap='butt';
+  // ワープ
+  g.fillStyle='#ff9d2e';g.fillRect(WARP.x,WARP.y,WARP.w,WARP.h);lbl('WARP',WARP.x+11,WARP.y-4,'#ff9d2e');
+  // ゲート
+  g.strokeStyle='#4dffcf';g.lineWidth=2;g.strokeRect(GATE.x,GATE.y,GATE.w,GATE.h);lbl('GATE',GATE.x+GATE.w/2,GATE.y-3,'#4dffcf');
+  // 普通入賞口
+  g.fillStyle='#caa';for(const p of POCKETS)g.fillRect(p.x,p.y,p.w,p.h);
+  // ヘソ
+  g.fillStyle='#4dff88';g.fillRect(CHUCKER.x,CHUCKER.y,CHUCKER.w,CHUCKER.h);lbl('START',CHUCKER.x+CHUCKER.w/2,CHUCKER.y+26,'#4dff88');
+  // 電チュー
+  g.fillStyle=S.denT>0?'#ffd24d':'#555';g.fillRect(DENCHU.x,DENCHU.y,DENCHU.w,DENCHU.h);
+  if(S.denT>0){g.fillRect(DENCHU.x-8,DENCHU.y-4,8,4);g.fillRect(DENCHU.x+DENCHU.w,DENCHU.y-4,8,4);}
+  lbl('電チュー',DENCHU.x+DENCHU.w/2,DENCHU.y+22,'#ffd24d');
+  // アタッカー
+  const op=S.bonus&&S.bonus.open;
+  g.fillStyle=op?'#ff4d4d':'#444';g.fillRect(ATTACK.x,ATTACK.y,ATTACK.w,ATTACK.h);
+  if(op){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(`${S.bonus.count}/10`,ATTACK.x+ATTACK.w/2,ATTACK.y+12);}
+  else lbl('ATTACKER',ATTACK.x+ATTACK.w/2,ATTACK.y+11,'#888');
+  // アウト口
+  g.fillStyle='#000';g.beginPath();g.ellipse(210,H,60,14,0,Math.PI,0);g.fill();lbl('OUT',210,H-4,'#666');
+  // 打ち方
+  lbl(rightSide()?'右打ち ▶':'◀ 左打ち',340,H-76,'#ffd24d');
+}
 function draw(){
   const m=S.mode;
   g.fillStyle=m==='st'?'#2a0f33':m==='bonus'?'#3b2a00':m==='jitan'?'#0f2a3a':'#10241c';
   g.fillRect(0,0,W,H);
   if(S.flash&&S.flash%8<4){g.fillStyle='rgba(255,255,255,.25)';g.fillRect(0,0,W,H);}
-  // 釘
-  g.fillStyle='#d8d8d8';for(const p of pegs){g.beginPath();g.arc(p.x,p.y,3,0,7);g.fill();}
+  drawBoard();
   // 液晶
   g.fillStyle='#14102a';g.fillRect(LCD.x,LCD.y,LCD.w,LCD.h);
   g.strokeStyle='#8f5cff';g.lineWidth=3;g.strokeRect(LCD.x,LCD.y,LCD.w,LCD.h);
@@ -219,10 +314,6 @@ function draw(){
   g.fillText(info,LCD.x+LCD.w/2,LCD.y+LCD.h-8);
   // 保留
   for(let i=0;i<4;i++){g.fillStyle=i<S.hold.length?'#ffd24d':'#333';g.beginPath();g.arc(LCD.x+LCD.w/2-30+i*20,LCD.y+LCD.h+22,6,0,7);g.fill();}
-  // チャッカー・アタッカー
-  g.fillStyle='#4dff88';g.fillRect(CHUCKER.x,CHUCKER.y,CHUCKER.w,CHUCKER.h);
-  g.fillStyle=S.bonus&&S.bonus.open?'#ffd24d':'#555';g.fillRect(ATTACK.x,ATTACK.y,ATTACK.w,ATTACK.h);
-  if(S.bonus&&S.bonus.open){g.fillStyle='#fff';g.font='12px sans-serif';g.textAlign='center';g.fillText(`${S.bonus.count}/10`,ATTACK.x+ATTACK.w/2,ATTACK.y+12);}
   // 玉
   g.fillStyle='#e8e8ff';for(const b of balls){g.beginPath();g.arc(b.x,b.y,4,0,7);g.fill();}
   // バナー
@@ -240,6 +331,7 @@ function ui(){
   $('pv').textContent=$('power').value;
 }
 document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{S.speed=+b.dataset.sp;document.querySelectorAll('[data-sp]').forEach(x=>x.classList.toggle('on',x===b));});
+document.querySelectorAll('[data-side]').forEach(b=>b.onclick=()=>{S.side=b.dataset.side;document.querySelectorAll('[data-side]').forEach(x=>x.classList.toggle('on',x===b));});
 $('auto').onclick=e=>{S.auto=!S.auto;e.target.classList.toggle('on',S.auto);e.target.textContent='自動打ち出し '+(S.auto?'ON':'OFF');};
 $('add').onclick=()=>{S.balls+=500;S.spent+=500;};
 cv.onclick=fire;
